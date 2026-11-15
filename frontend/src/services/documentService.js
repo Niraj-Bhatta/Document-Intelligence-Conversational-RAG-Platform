@@ -37,3 +37,12 @@ export const getDocument = async (documentId) => {
 
   return response.data;
 };
+
+// Delete a document
+export const deleteDocument = async (documentId) => {
+  const response = await API.delete(
+    `/documents/${documentId}`
+  );
+
+  return response.data;
+};

@@ -20,6 +20,7 @@ import {
   uploadDocument,
   getDocuments,
   getDocument,
+  deleteDocument,
 } from "./services/documentService";
 
 import { sendChatMessage } from "./services/chatService";
@@ -46,12 +47,13 @@ function App() {
   const [documentDetailsLoading, setDocumentDetailsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
-const [messages, setMessages] = useState([]);
-const [question, setQuestion] = useState("");
-const [chatLoading, setChatLoading] = useState(false);
-const [chatError, setChatError] = useState("");
-const [conversationId] = useState(() => crypto.randomUUID());
-
+  const [messages, setMessages] = useState([]);
+  const [question, setQuestion] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [conversationId] = useState(() => crypto.randomUUID());
+  const [selectedChatDocument, setSelectedChatDocument] = useState("all");
+  const [deletingDocumentId, setDeletingDocumentId] = useState(null);
 
   const searchInputRef = useRef(null);
 
@@ -89,6 +91,37 @@ const [conversationId] = useState(() => crypto.randomUUID());
       setDocumentDetailsLoading(false);
     }
   };
+
+  const handleDeleteDocument = async (documentId, filename) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${filename}"?`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingDocumentId(documentId);
+
+      await deleteDocument(documentId);
+
+      // Refresh the document list
+      await loadDocuments();
+
+      // Close details if the deleted document was selected
+      if (selectedDocument?.document_id === documentId) {
+        setSelectedDocument(null);
+      }
+
+      alert("Document deleted successfully.");
+    } catch (error) {
+      console.error("Failed to delete document:", error);
+
+      alert(error.response?.data?.detail || "Failed to delete document.");
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  };
+
   useEffect(() => {
     loadDocuments();
   }, []);
@@ -126,55 +159,56 @@ const [conversationId] = useState(() => crypto.randomUUID());
   };
 
   const handleSendMessage = async (event) => {
-  event.preventDefault();
+    event.preventDefault();
 
-  const userQuestion = question.trim();
+    const userQuestion = question.trim();
 
-  if (!userQuestion || chatLoading) return;
+    if (!userQuestion || chatLoading) return;
 
-  // Display the user's message immediately.
-  setMessages((previous) => [
-    ...previous,
-    {
-      role: "user",
-      content: userQuestion,
-    },
-  ]);
-
-  setQuestion("");
-  setChatLoading(true);
-  setChatError("");
-
-  try {
-    const result = await sendChatMessage({
-      question: userQuestion,
-      conversationId,
-      documentId: null,
-      limit: 5,
-    });
-
-    // Add Gemini's response and retrieved sources.
+    // Display the user's message immediately.
     setMessages((previous) => [
       ...previous,
       {
-        role: "assistant",
-        content: result.answer,
-        sources: result.sources,
-        retrievedCount: result.retrieved_count,
+        role: "user",
+        content: userQuestion,
       },
     ]);
-  } catch (error) {
-    console.error("Chat request failed:", error);
 
-    setChatError(
-      error.response?.data?.detail ||
-        error.message ||
-        "Failed to get an answer. Please try again.",
-    );
-  } finally {
-    setChatLoading(false);
-  }
-};
+    setQuestion("");
+    setChatLoading(true);
+    setChatError("");
+
+    try {
+      const result = await sendChatMessage({
+        question: userQuestion,
+        conversationId,
+        documentId:
+          selectedChatDocument === "all" ? null : selectedChatDocument,
+        limit: 5,
+      });
+
+      // Add Gemini's response and retrieved sources.
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content: result.answer,
+          sources: result.sources,
+          retrievedCount: result.retrieved_count,
+        },
+      ]);
+    } catch (error) {
+      console.error("Chat request failed:", error);
+
+      setChatError(
+        error.response?.data?.detail ||
+          error.message ||
+          "Failed to get an answer. Please try again.",
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
   const handleFileChange = (event) => {
     const file = event.target.files?.[0];
 
@@ -815,6 +849,23 @@ const [conversationId] = useState(() => crypto.randomUUID());
                                 >
                                   View Details
                                 </button>
+
+                                <button
+                                  onClick={() =>
+                                    handleDeleteDocument(
+                                      document.document_id,
+                                      document.filename,
+                                    )
+                                  }
+                                  disabled={
+                                    deletingDocumentId === document.document_id
+                                  }
+                                  className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {deletingDocumentId === document.document_id
+                                    ? "Deleting..."
+                                    : "Delete"}
+                                </button>
                               </div>
                             </div>
                           ))
@@ -890,140 +941,166 @@ const [conversationId] = useState(() => crypto.randomUUID());
               </section>
             )}
 
-            
-{activePage === "AI Assistant" && (
-  <section className="flex h-[calc(100vh-180px)] min-h-[500px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-    {/* Chat Header */}
-    <div className="border-b border-slate-200 p-5">
-      <div className="flex items-center gap-3">
-        <div className="rounded-xl bg-blue-50 p-3">
-          <Sparkles className="text-blue-600" size={22} />
-        </div>
-        <div>
-          <h3 className="font-bold text-slate-800">
-            DocuMind AI Assistant
-          </h3>
-          <p className="text-xs text-slate-500">
-            Ask questions about your uploaded documents
-          </p>
-        </div>
-      </div>
-    </div>
+            {activePage === "AI Assistant" && (
+              <section className="flex h-[calc(100vh-180px)] min-h-[500px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {/* Chat Header */}
+                <div className="border-b border-slate-200 p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-blue-50 p-3">
+                      <Sparkles className="text-blue-600" size={22} />
+                    </div>
 
-    {/* Messages */}
-    <div className="flex-1 space-y-5 overflow-y-auto p-5">
-      {messages.length === 0 && (
-        <div className="flex h-full flex-col items-center justify-center text-center">
-          <Sparkles size={38} className="text-blue-500" />
-
-          <h3 className="mt-4 text-lg font-bold text-slate-800">
-            Ask your documents anything
-          </h3>
-
-          <p className="mt-2 max-w-md text-sm text-slate-500">
-            DocuMind retrieves relevant information from your
-            uploaded documents and generates answers using AI.
-          </p>
-        </div>
-      )}
-
-      {messages.map((message, index) => (
-        <div
-          key={index}
-          className={`flex ${
-            message.role === "user"
-              ? "justify-end"
-              : "justify-start"
-          }`}
-        >
-          <div
-            className={`max-w-[85%] rounded-2xl p-4 ${
-              message.role === "user"
-                ? "bg-blue-600 text-white"
-                : "bg-slate-100 text-slate-800"
-            }`}
-          >
-            <p className="whitespace-pre-wrap text-sm leading-7">
-              {message.content}
-            </p>
-
-            {message.role === "assistant" &&
-              message.sources?.length > 0 && (
-                <div className="mt-4 border-t border-slate-300 pt-3">
-                  <p className="mb-2 text-xs font-bold">
-                    Sources ({message.retrievedCount})
-                  </p>
-
-                  {message.sources.map((source, sourceIndex) => (
-                    <div
-                      key={sourceIndex}
-                      className="mb-2 text-xs text-slate-600"
-                    >
-                      <p className="font-semibold">
-                        {source.filename}
-                      </p>
-                      <p>
-                        Chunk: {source.chunk_index ?? "N/A"}
-                        {" · "}
-                        Score: {source.score?.toFixed(3) ?? "N/A"}
+                    <div>
+                      <h3 className="font-bold text-slate-800">
+                        DocuMind AI Assistant
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Ask questions about your uploaded documents
                       </p>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Document Selector */}
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm font-medium text-slate-600">
+                      Search in
+                    </label>
+
+                    <select
+                      value={selectedChatDocument}
+                      onChange={(event) =>
+                        setSelectedChatDocument(event.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    >
+                      <option value="all">All documents</option>
+
+                      {documents.map((document) => (
+                        <option
+                          key={document.document_id}
+                          value={document.document_id}
+                        >
+                          {document.filename}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              )}
-          </div>
-        </div>
-      ))}
 
-      {chatLoading && (
-        <div className="text-sm text-slate-500">
-          DocuMind is thinking...
-        </div>
-      )}
+                {/* Messages */}
+                <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                  {messages.length === 0 && (
+                    <div className="flex h-full flex-col items-center justify-center text-center">
+                      <Sparkles size={38} className="text-blue-500" />
 
-      {chatError && (
-        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-          {chatError}
-        </p>
-      )}
-    </div>
+                      <h3 className="mt-4 text-lg font-bold text-slate-800">
+                        Ask your documents anything
+                      </h3>
 
-    {/* Chat Input */}
-    <form
-      onSubmit={handleSendMessage}
-      className="border-t border-slate-200 p-4"
-    >
-      <div className="flex items-center gap-3">
-        <input
-          type="text"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask something about your documents..."
-          disabled={chatLoading}
-          className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-        />
+                      <p className="mt-2 max-w-md text-sm text-slate-500">
+                        DocuMind retrieves relevant information from your
+                        uploaded documents and generates answers using AI.
+                      </p>
+                    </div>
+                  )}
 
-        <button
-          type="submit"
-          disabled={chatLoading || !question.trim()}
-          className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Send
-        </button>
-      </div>
-    </form>
-  </section>
-)}
+                  {messages.map((message, index) => (
+                    <div
+                      key={index}
+                      className={`flex ${
+                        message.role === "user"
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`max-w-[85%] rounded-2xl p-4 ${
+                          message.role === "user"
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-100 text-slate-800"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap text-sm leading-7">
+                          {message.content}
+                        </p>
 
-{activePage === "Bookings" && (
-  <section className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-    <CalendarDays className="mx-auto text-blue-600" size={36} />
-    <h3 className="mt-4 text-xl font-bold">Bookings</h3>
-    <p className="mt-2 text-sm text-slate-500">
-      We'll connect bookings to your backend next.
-    </p>
-  </section>
-)}
+                        {message.role === "assistant" &&
+                          message.sources?.length > 0 && (
+                            <div className="mt-4 border-t border-slate-300 pt-3">
+                              <p className="mb-2 text-xs font-bold">
+                                Sources ({message.retrievedCount})
+                              </p>
+
+                              {message.sources.map((source, sourceIndex) => (
+                                <div
+                                  key={sourceIndex}
+                                  className="mb-2 text-xs text-slate-600"
+                                >
+                                  <p className="font-semibold">
+                                    {source.filename}
+                                  </p>
+                                  <p>
+                                    Chunk: {source.chunk_index ?? "N/A"}
+                                    {" · "}
+                                    Score: {source.score?.toFixed(3) ?? "N/A"}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {chatLoading && (
+                    <div className="text-sm text-slate-500">
+                      DocuMind is thinking...
+                    </div>
+                  )}
+
+                  {chatError && (
+                    <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                      {chatError}
+                    </p>
+                  )}
+                </div>
+
+                {/* Chat Input */}
+                <form
+                  onSubmit={handleSendMessage}
+                  className="border-t border-slate-200 p-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="text"
+                      value={question}
+                      onChange={(event) => setQuestion(event.target.value)}
+                      placeholder="Ask something about your documents..."
+                      disabled={chatLoading}
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={chatLoading || !question.trim()}
+                      className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </form>
+              </section>
+            )}
+
+            {activePage === "Bookings" && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+                <CalendarDays className="mx-auto text-blue-600" size={36} />
+                <h3 className="mt-4 text-xl font-bold">Bookings</h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  We'll connect bookings to your backend next.
+                </p>
+              </section>
+            )}
           </div>
         </main>
       </div>

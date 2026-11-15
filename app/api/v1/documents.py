@@ -198,3 +198,29 @@ def get_document(
         "status": document.status,
         "created_at": document.created_at.isoformat(),
     }
+
+@router.delete("/{document_id}")
+def delete_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_id)
+        .first()
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found.",
+        )
+
+    db.delete(document)
+    db.commit()
+
+    return {
+        "message": "Document deleted successfully.",
+        "document_id": document_id,
+    }
