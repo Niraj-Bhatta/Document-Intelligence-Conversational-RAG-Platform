@@ -20,6 +20,12 @@ class Document(Base):
         nullable=False,
     )
 
+    file_size: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+
     chunking_strategy: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

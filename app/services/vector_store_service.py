@@ -133,6 +133,41 @@ class VectorStoreService:
 
         return retrieved_chunks
 
+    def delete_document(self, document_id: str) -> int:
+        """Delete all vectors belonging to a document from Qdrant."""
+
+        result = self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="document_id",
+                            match=models.MatchValue(value=document_id),
+                        )
+                    ]
+                )
+            ),
+            wait=True,
+        )
+
+        # result.status is an UpdateStatus enum
+        return 1 if result else 0
+
+    def get_collection_stats(self) -> dict:
+        """Return basic stats about the Qdrant collection."""
+
+        try:
+            info = self.client.get_collection(
+                collection_name=self.collection_name,
+            )
+            return {
+                "total_vectors": info.points_count or 0,
+                "indexed_vectors": info.indexed_vectors_count or 0,
+            }
+        except Exception:
+            return {"total_vectors": 0, "indexed_vectors": 0}
+
     def create_payload_indexes(self) -> None:
         self.client.create_payload_index(
             collection_name=self.collection_name,

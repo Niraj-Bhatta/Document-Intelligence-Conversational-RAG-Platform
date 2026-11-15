@@ -62,12 +62,37 @@ async def upload_document(
             detail="Uploaded file is empty.",
         )
 
+    file_size = len(file_content)
+
+    # Prevent uploading a document if one with the same name and size already exists
+    existing_duplicate = (
+        db.query(Document)
+        .filter(
+            Document.filename == file.filename,
+            (Document.file_size == file_size) | (Document.file_size == 0) | (Document.file_size == None),
+        )
+        .first()
+    )
+
+    if existing_duplicate and existing_duplicate.file_size == file_size and file_size > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document '{file.filename}' with the same size ({file_size} bytes) already exists.",
+        )
+
     try:
         # 4. Extract document text
         extracted_text = extract_text(
             file_content=file_content,
             filename=file.filename,
         )
+
+        # Check content length against existing records with same filename if file_size was unset
+        if existing_duplicate and existing_duplicate.character_count == len(extracted_text):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Document '{file.filename}' with identical content ({len(extracted_text)} characters) already exists.",
+            )
 
         # 5. Split extracted text into chunks
         chunks = chunk_text(
@@ -100,6 +125,7 @@ async def upload_document(
         document = Document(
             id=document_id,
             filename=file.filename,
+            file_size=file_size,
             chunking_strategy=chunking_strategy,
             character_count=len(extracted_text),
             chunk_count=len(chunks),
@@ -115,6 +141,7 @@ async def upload_document(
         return {
             "document_id": document_id,
             "filename": file.filename,
+            "file_size": file_size,
             "message": "Document ingested and stored successfully.",
             "chunking_strategy": chunking_strategy,
             "character_count": len(extracted_text),
@@ -144,6 +171,55 @@ async def upload_document(
         await file.close()
 
 
+@router.get("/stats/summary")
+def get_stats(
+    db: Session = Depends(get_db),
+) -> dict:
+    """Return aggregate statistics for the dashboard."""
+
+    from sqlalchemy import func
+    from app.db.models import Booking
+
+    total_documents = db.query(func.count(Document.id)).scalar() or 0
+    total_chunks = db.query(func.sum(Document.chunk_count)).scalar() or 0
+    active_bookings = (
+        db.query(func.count(Booking.id))
+        .filter(Booking.status == "confirmed")
+        .scalar()
+        or 0
+    )
+
+    try:
+        vector_store = get_vector_store()
+        qdrant_stats = vector_store.get_collection_stats()
+    except Exception:
+        qdrant_stats = {"total_vectors": 0}
+
+    recent_documents = (
+        db.query(Document)
+        .order_by(Document.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    return {
+        "total_documents": total_documents,
+        "total_chunks": total_chunks,
+        "active_bookings": active_bookings,
+        "total_vectors": qdrant_stats.get("total_vectors", 0),
+        "recent_documents": [
+            {
+                "document_id": doc.id,
+                "filename": doc.filename,
+                "chunk_count": doc.chunk_count,
+                "status": doc.status,
+                "created_at": doc.created_at.isoformat(),
+            }
+            for doc in recent_documents
+        ],
+    }
+
+
 @router.get("/")
 def list_documents(
     db: Session = Depends(get_db),
@@ -159,6 +235,7 @@ def list_documents(
         {
             "document_id": document.id,
             "filename": document.filename,
+            "file_size": document.file_size,
             "chunking_strategy": document.chunking_strategy,
             "character_count": document.character_count,
             "chunk_count": document.chunk_count,
@@ -191,6 +268,7 @@ def get_document(
     return {
         "document_id": document.id,
         "filename": document.filename,
+        "file_size": document.file_size,
         "chunking_strategy": document.chunking_strategy,
         "character_count": document.character_count,
         "chunk_count": document.chunk_count,
@@ -217,10 +295,22 @@ def delete_document(
             detail="Document not found.",
         )
 
+    # Delete vectors from Qdrant first
+    try:
+        vector_store = get_vector_store()
+        vector_store.delete_document(document_id)
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete document vectors from Qdrant.",
+        ) from error
+
+    # Then remove the SQLite metadata row
     db.delete(document)
     db.commit()
 
     return {
         "message": "Document deleted successfully.",
         "document_id": document_id,
+        "vectors_removed": True,
     }

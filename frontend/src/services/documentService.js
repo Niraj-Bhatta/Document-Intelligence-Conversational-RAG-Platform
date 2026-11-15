@@ -38,11 +38,18 @@ export const getDocument = async (documentId) => {
   return response.data;
 };
 
-// Delete a document
+// Delete a document (removes from Qdrant + SQLite)
 export const deleteDocument = async (documentId) => {
   const response = await API.delete(
     `/documents/${documentId}`
   );
+
+  return response.data;
+};
+
+// Get dashboard statistics
+export const getStats = async () => {
+  const response = await API.get("/documents/stats/summary");
 
   return response.data;
 };

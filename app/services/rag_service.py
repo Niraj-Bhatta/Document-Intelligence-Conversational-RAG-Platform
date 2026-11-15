@@ -89,12 +89,24 @@ def answer_question(
 
 
 
-    # 3. Retrieve relevant document chunks.
+    # 3. Retrieve relevant document chunks (fetch extra to allow dedup).
     retrieved_chunks = retrieve_relevant_chunks(
         question=question,
-        limit=limit,
+        limit=limit * 3,  # over-fetch so dedup still yields enough results
         document_id=document_id,
     )
+
+    # Deduplicate by (document_id, chunk_index) keeping highest-scoring copy
+    seen: set[tuple] = set()
+    unique_chunks: list[dict] = []
+    for chunk in retrieved_chunks:
+        key = (chunk.get("document_id"), chunk.get("chunk_index"))
+        if key not in seen:
+            seen.add(key)
+            unique_chunks.append(chunk)
+        if len(unique_chunks) >= limit:
+            break
+    retrieved_chunks = unique_chunks
 
     if not retrieved_chunks:
         answer = "I couldn't find relevant information in the uploaded documents."

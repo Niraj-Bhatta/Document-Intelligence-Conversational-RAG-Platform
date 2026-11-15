@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
+from app.services.memory_service import get_redis_client, ConversationMemory
 
 logger = logging.getLogger(__name__)
 
@@ -47,4 +48,48 @@ def chat(
         raise HTTPException(
             status_code=500,
             detail="Failed to generate an answer.",
+        ) from error
+
+
+@router.get("/history/{conversation_id}")
+def get_conversation_history(conversation_id: str) -> dict:
+    """Return stored conversation messages for a given session."""
+
+    try:
+        redis_client = get_redis_client()
+        memory = ConversationMemory(redis_client)
+        messages = memory.get_history(
+            conversation_id=conversation_id,
+            limit=50,
+        )
+        return {
+            "conversation_id": conversation_id,
+            "messages": messages,
+            "count": len(messages),
+        }
+    except Exception as error:
+        logger.exception("Failed to retrieve conversation history")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve conversation history.",
+        ) from error
+
+
+@router.delete("/history/{conversation_id}")
+def clear_conversation_history(conversation_id: str) -> dict:
+    """Delete all messages in a conversation session from Redis."""
+
+    try:
+        redis_client = get_redis_client()
+        key = f"conversation:{conversation_id}"
+        redis_client.delete(key)
+        return {
+            "message": "Conversation history cleared.",
+            "conversation_id": conversation_id,
+        }
+    except Exception as error:
+        logger.exception("Failed to clear conversation history")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to clear conversation history.",
         ) from error

@@ -22,3 +22,13 @@ export const sendChatMessage = async ({
 
   return response.data;
 };
+
+export const getConversationHistory = async (conversationId) => {
+  const response = await API.get(`/chat/history/${conversationId}`);
+  return response.data;
+};
+
+export const clearConversationHistory = async (conversationId) => {
+  const response = await API.delete(`/chat/history/${conversationId}`);
+  return response.data;
+};
