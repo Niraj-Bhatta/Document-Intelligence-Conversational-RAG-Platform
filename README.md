@@ -550,9 +550,6 @@ Replace the placeholder values with your own credentials and configuration.
 
 SQLite is used as the relational database and does not require a separate server.
 
-> [!WARNING]
-> Do not commit `.env` to GitHub. Keep credentials private and provide an `.env.example` file containing placeholders when sharing the project.
-
 ---
 
 ## Installation and Setup
