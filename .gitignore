@@ -32,6 +32,7 @@ npm-debug.log*
 *.sqlite
 *.sqlite3
 uploads/
+upload/
 data/
 
 # Local vector store / model caches
