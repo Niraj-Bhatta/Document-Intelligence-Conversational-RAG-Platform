@@ -32,7 +32,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm install --include=optional
+        run: npm install --include=optional --no-package-lock
 
       - name: Build frontend
         working-directory: frontend
